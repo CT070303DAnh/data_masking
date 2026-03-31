@@ -1,0 +1,33 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "C/C++: cl.exe build active file",
+            "command": "cmd",
+            "args": [
+                "/d",
+                "/c",
+                "cl.exe /Zi /EHsc /nologo /Fe\"${workspaceFolder}\\data_masking.exe\" \"${workspaceFolder}\\data_masking.cpp\" /link odbc32.lib odbccp32.lib /MACHINE:X64"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": {
+                    "executable": "C:\\Windows\\System32\\cmd.exe",
+                    "args": [
+                        "/d",
+                        "/c"
+                    ]
+                }
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Build x64 executable and link ODBC libs."
+        }
+    ],
+    "version": "2.0.0"
+}
