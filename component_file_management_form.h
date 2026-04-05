@@ -151,10 +151,13 @@ private:
             MessageBoxIcon::Question
         ) == System::Windows::Forms::DialogResult::Yes;
 
-        String^ key = nhapChuoiDonGian("Key ma hoa file", "Nhap key de ma hoa file (se can key nay de tai/giai ma):", true);
-        if (String::IsNullOrWhiteSpace(key) || key->Length < 6) {
-            MessageBox::Show("Key khong hop le (toi thieu 6 ky tu).", "Loi", MessageBoxButtons::OK, MessageBoxIcon::Warning);
-            return;
+        String^ key = "";
+        if (maHoa) {
+            key = nhapChuoiDonGian("Key ma hoa file", "Nhap key de ma hoa file (se can key nay de tai/giai ma):", true);
+            if (String::IsNullOrWhiteSpace(key) || key->Length < 6) {
+                MessageBox::Show("Key khong hop le (toi thieu 6 ky tu).", "Loi", MessageBoxButtons::OK, MessageBoxIcon::Warning);
+                return;
+            }
         }
 
         try {
@@ -188,7 +191,12 @@ private:
             cmd->Parameters->AddWithValue("", ext);
             cmd->Parameters->AddWithValue("", userId);
             cmd->Parameters->AddWithValue("", maHoa ? 1 : 0);
-            cmd->Parameters->AddWithValue("", bamSHA256Hex(key));
+            if (maHoa) {
+                cmd->Parameters->AddWithValue("", bamSHA256Hex(key));
+            }
+            else {
+                cmd->Parameters->AddWithValue("", DBNull::Value);
+            }
             cmd->ExecuteNonQuery();
             ghiNhatKyChung(conn, "UPLOAD_FILE", Nullable<Int64>(userId), "SUCCESS", "Tai len file: " + tenGoc + (maHoa ? " -> filemahoa" : " -> filekomahoa"));
             conn->Close();
@@ -238,19 +246,18 @@ private:
                 return;
             }
 
-            String^ key = nhapChuoiDonGian("Key tai file", "Nhap key de tai file:", true);
-            if (String::IsNullOrWhiteSpace(key)) {
-                conn->Close();
-                return;
-            }
-            if (!String::Equals(keyHash, bamSHA256Hex(key), StringComparison::OrdinalIgnoreCase)) {
-                ghiNhatKyChung(conn, "DOWNLOAD_FILE", Nullable<Int64>(userId), "FAIL", "Sai key tai file id=" + Convert::ToString(idFile) + ", uploader=" + Convert::ToString(nguoiTaiLenId));
-                conn->Close();
-                MessageBox::Show("Key khong dung.", "Loi", MessageBoxButtons::OK, MessageBoxIcon::Warning);
-                return;
-            }
-
             if (daMaHoa == 1) {
+                String^ key = nhapChuoiDonGian("Key tai file", "Nhap key de tai file da ma hoa:", true);
+                if (String::IsNullOrWhiteSpace(key)) {
+                    conn->Close();
+                    return;
+                }
+                if (!String::Equals(keyHash, bamSHA256Hex(key), StringComparison::OrdinalIgnoreCase)) {
+                    ghiNhatKyChung(conn, "DOWNLOAD_FILE", Nullable<Int64>(userId), "FAIL", "Sai key tai file id=" + Convert::ToString(idFile) + ", uploader=" + Convert::ToString(nguoiTaiLenId));
+                    conn->Close();
+                    MessageBox::Show("Key khong dung.", "Loi", MessageBoxButtons::OK, MessageBoxIcon::Warning);
+                    return;
+                }
                 array<Byte>^ dataEnc = File::ReadAllBytes(duongDanLuu);
                 array<Byte>^ dataRaw = giaiMaDESDuLieuNhiPhan(dataEnc, key);
                 if (dataRaw == nullptr) {
