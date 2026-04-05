@@ -9,11 +9,112 @@ private:
     Button^ btnUpload;
     Button^ btnDownload;
     Button^ btnTaiLai;
+    TextBox^ txtReview;
 
-    String^ thuMucLuuFile() {
-        String^ p = Path::Combine(Application::StartupPath, "uploaded_files");
+    String^ thuMucLuuFileMaHoa() {
+        String^ p = Path::Combine(Application::StartupPath, "filemahoa");
         Directory::CreateDirectory(p);
         return p;
+    }
+
+    String^ thuMucLuuFileKhongMaHoa() {
+        String^ p = Path::Combine(Application::StartupPath, "filekomahoa");
+        Directory::CreateDirectory(p);
+        return p;
+    }
+
+    String^ bytesToHexXemTruoc(array<Byte>^ data, int gioiHanByte) {
+        if (data == nullptr || data->Length == 0) {
+            return "(File rong)";
+        }
+        int soByte = data->Length;
+        if (soByte > gioiHanByte) {
+            soByte = gioiHanByte;
+        }
+        StringBuilder^ sb = gcnew StringBuilder(soByte * 2 + 128);
+        int i = 0;
+        while (i < soByte) {
+            sb->Append(data[i].ToString("X2"));
+            if ((i + 1) % 32 == 0) {
+                sb->Append(Environment::NewLine);
+            }
+            else {
+                sb->Append(' ');
+            }
+            i = i + 1;
+        }
+        if (data->Length > gioiHanByte) {
+            sb->Append(Environment::NewLine + "...(chi hien thi " + Convert::ToString(gioiHanByte) + " byte dau)");
+        }
+        return sb->ToString();
+    }
+
+    String^ textXemTruocTuBytes(array<Byte>^ data, int gioiHanByte) {
+        if (data == nullptr || data->Length == 0) {
+            return "(File rong)";
+        }
+        int soByte = data->Length;
+        if (soByte > gioiHanByte) {
+            soByte = gioiHanByte;
+        }
+        array<Byte>^ cat = gcnew array<Byte>(soByte);
+        Buffer::BlockCopy(data, 0, cat, 0, soByte);
+        String^ noiDung = Encoding::UTF8->GetString(cat);
+        if (data->Length > gioiHanByte) {
+            noiDung = noiDung + Environment::NewLine + "...(chi hien thi " + Convert::ToString(gioiHanByte) + " byte dau)";
+        }
+        return noiDung;
+    }
+
+    void hienThiReviewTheoDongDuocChon() {
+        if (dgvFile == nullptr || dgvFile->SelectedRows->Count != 1) {
+            txtReview->Text = "Chon 1 file de xem review noi dung.";
+            return;
+        }
+        try {
+            Int64 idFile = Convert::ToInt64(dgvFile->SelectedRows[0]->Cells["id"]->Value);
+            OdbcConnection^ conn = gcnew OdbcConnection(connStr);
+            conn->Open();
+            OdbcCommand^ cmd = gcnew OdbcCommand(
+                "SELECT ten_file_goc, duong_dan_luu, da_ma_hoa FROM TepTinNguoiDung WHERE id = ?",
+                conn
+            );
+            cmd->Parameters->AddWithValue("", idFile);
+            OdbcDataReader^ r = cmd->ExecuteReader();
+            if (!r->Read()) {
+                r->Close();
+                conn->Close();
+                txtReview->Text = "Khong tim thay metadata file.";
+                return;
+            }
+            String^ tenGoc = Convert::ToString(r[0]);
+            String^ duongDanLuu = Convert::ToString(r[1]);
+            int daMaHoa = Convert::ToInt32(r[2]);
+            r->Close();
+            conn->Close();
+
+            if (!File::Exists(duongDanLuu)) {
+                txtReview->Text = "Khong tim thay file vat ly tai: " + duongDanLuu;
+                return;
+            }
+            array<Byte>^ data = File::ReadAllBytes(duongDanLuu);
+            if (daMaHoa == 1) {
+                txtReview->Text = "[Review noi dung ma hoa] File: " + tenGoc + Environment::NewLine
+                    + "Noi dung duoc hien thi duoi dang HEX (ciphertext):" + Environment::NewLine
+                    + bytesToHexXemTruoc(data, 2048);
+            }
+            else {
+                txtReview->Text = "[Review noi dung goc] File: " + tenGoc + Environment::NewLine
+                    + textXemTruocTuBytes(data, 8192);
+            }
+        }
+        catch (Exception^ ex) {
+            txtReview->Text = "Loi doc review file: " + ex->Message;
+        }
+    }
+
+    void OnDgvFileSelectionChanged(Object^ sender, EventArgs^ e) {
+        hienThiReviewTheoDongDuocChon();
     }
 
     void taiDanhSachFile() {
@@ -28,6 +129,7 @@ private:
             DataTable^ dt = gcnew DataTable();
             ad->Fill(dt);
             dgvFile->DataSource = dt;
+            hienThiReviewTheoDongDuocChon();
             conn->Close();
         }
         catch (Exception^ ex) {
@@ -49,7 +151,7 @@ private:
             MessageBoxIcon::Question
         ) == System::Windows::Forms::DialogResult::Yes;
 
-        String^ key = nhapChuoiDonGian("Key tai xuong file", "Nhap key (se can key nay de tai file):", true);
+        String^ key = nhapChuoiDonGian("Key ma hoa file", "Nhap key de ma hoa file (se can key nay de tai/giai ma):", true);
         if (String::IsNullOrWhiteSpace(key) || key->Length < 6) {
             MessageBox::Show("Key khong hop le (toi thieu 6 ky tu).", "Loi", MessageBoxButtons::OK, MessageBoxIcon::Warning);
             return;
@@ -69,7 +171,7 @@ private:
             String^ tenGoc = Path::GetFileName(ofd->FileName);
             String^ ext = Path::GetExtension(ofd->FileName);
             String^ tenLuu = DateTime::Now.Ticks.ToString() + "_" + tenGoc + (maHoa ? ".des" : ".raw");
-            String^ duongDan = Path::Combine(thuMucLuuFile(), tenLuu);
+            String^ duongDan = Path::Combine(maHoa ? thuMucLuuFileMaHoa() : thuMucLuuFileKhongMaHoa(), tenLuu);
             File::WriteAllBytes(duongDan, duLieuLuu);
 
             OdbcConnection^ conn = gcnew OdbcConnection(connStr);
@@ -88,10 +190,10 @@ private:
             cmd->Parameters->AddWithValue("", maHoa ? 1 : 0);
             cmd->Parameters->AddWithValue("", bamSHA256Hex(key));
             cmd->ExecuteNonQuery();
-            ghiNhatKyChung(conn, "UPLOAD_FILE", Nullable<Int64>(userId), "SUCCESS", "Tai len file: " + tenGoc + (maHoa ? " (DES)" : " (raw)"));
+            ghiNhatKyChung(conn, "UPLOAD_FILE", Nullable<Int64>(userId), "SUCCESS", "Tai len file: " + tenGoc + (maHoa ? " -> filemahoa" : " -> filekomahoa"));
             conn->Close();
             taiDanhSachFile();
-            MessageBox::Show("Tai len file thanh cong.", "Thong bao", MessageBoxButtons::OK, MessageBoxIcon::Information);
+            MessageBox::Show("Tai len file thanh cong (" + (maHoa ? "da ma hoa, luu filemahoa" : "khong ma hoa, luu filekomahoa") + ").", "Thong bao", MessageBoxButtons::OK, MessageBoxIcon::Information);
         }
         catch (Exception^ ex) {
             MessageBox::Show("Loi tai len file:\n" + ex->Message, "Loi", MessageBoxButtons::OK, MessageBoxIcon::Error);
@@ -182,40 +284,57 @@ public:
         userId = idDangNhap;
         laAdmin = roleAdmin;
         this->Text = "Quan ly file dung chung";
-        this->Size = Drawing::Size(980, 520);
+        this->Size = Drawing::Size(980, 760);
         this->StartPosition = FormStartPosition::CenterParent;
 
         dgvFile = gcnew DataGridView();
         dgvFile->Location = Point(20, 20);
-        dgvFile->Size = Drawing::Size(930, 390);
+        dgvFile->Size = Drawing::Size(930, 320);
         dgvFile->ReadOnly = true;
         dgvFile->AllowUserToAddRows = false;
         dgvFile->AllowUserToDeleteRows = false;
         dgvFile->SelectionMode = DataGridViewSelectionMode::FullRowSelect;
         dgvFile->MultiSelect = false;
         dgvFile->AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode::Fill;
+        dgvFile->SelectionChanged += gcnew EventHandler(this, &FileManagementForm::OnDgvFileSelectionChanged);
         this->Controls->Add(dgvFile);
 
         btnUpload = gcnew Button();
         btnUpload->Text = "Tai len file";
-        btnUpload->Location = Point(20, 425);
+        btnUpload->Location = Point(20, 355);
         btnUpload->Size = Drawing::Size(130, 35);
         btnUpload->Click += gcnew EventHandler(this, &FileManagementForm::OnUploadClick);
         this->Controls->Add(btnUpload);
 
         btnDownload = gcnew Button();
         btnDownload->Text = "Tai xuong file";
-        btnDownload->Location = Point(165, 425);
+        btnDownload->Location = Point(165, 355);
         btnDownload->Size = Drawing::Size(130, 35);
         btnDownload->Click += gcnew EventHandler(this, &FileManagementForm::OnDownloadClick);
         this->Controls->Add(btnDownload);
 
         btnTaiLai = gcnew Button();
         btnTaiLai->Text = "Tai lai metadata";
-        btnTaiLai->Location = Point(310, 425);
+        btnTaiLai->Location = Point(310, 355);
         btnTaiLai->Size = Drawing::Size(150, 35);
         btnTaiLai->Click += gcnew EventHandler(this, &FileManagementForm::OnTaiLaiClick);
         this->Controls->Add(btnTaiLai);
+
+        Label^ lbReview = gcnew Label();
+        lbReview->Text = "Review noi dung file";
+        lbReview->Location = Point(20, 405);
+        lbReview->Size = Drawing::Size(220, 24);
+        this->Controls->Add(lbReview);
+
+        txtReview = gcnew TextBox();
+        txtReview->Location = Point(20, 432);
+        txtReview->Size = Drawing::Size(930, 280);
+        txtReview->Multiline = true;
+        txtReview->ReadOnly = true;
+        txtReview->ScrollBars = ScrollBars::Vertical;
+        txtReview->Font = gcnew Drawing::Font("Consolas", 9);
+        txtReview->Text = "Chon 1 file de xem review noi dung.";
+        this->Controls->Add(txtReview);
 
         taiDanhSachFile();
     }
